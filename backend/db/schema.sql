@@ -25,12 +25,18 @@ CREATE TABLE IF NOT EXISTS books (
   display_order INTEGER
 );
 
--- Per-hadith result for each book (found or not)
+-- Per-hadith result for each book
+-- status values:
+--   unchecked     — book has not been consulted yet (default)
+--   found         — book was checked and the hadith was found
+--   not_found     — book was checked and the hadith was not found
+--   not_available — book could not be consulted (no access to this source)
 CREATE TABLE IF NOT EXISTS hadith_books (
   id SERIAL PRIMARY KEY,
   hadith_id INTEGER REFERENCES hadiths(id) ON DELETE CASCADE,
   book_id INTEGER REFERENCES books(id),
-  found BOOLEAN DEFAULT FALSE,
+  status VARCHAR(20) DEFAULT 'unchecked'
+    CHECK (status IN ('unchecked', 'found', 'not_found', 'not_available')),
   matn_arabic TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
