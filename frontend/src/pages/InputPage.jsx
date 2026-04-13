@@ -32,8 +32,14 @@ export default function InputPage() {
       body: JSON.stringify({ book_id: bookId, status }),
     })
     const updated = await res.json()
+    // Preserve b.id (books table id) — do NOT spread updated which would
+    // overwrite it with the hadith_books row id.
+    // Set hadith_book_id explicitly so ChainSection and MatnInput can save.
     setBookStatuses(prev =>
-      prev.map(b => b.id === bookId ? { ...b, ...updated, status } : b)
+      prev.map(b => b.id === bookId
+        ? { ...b, status, hadith_book_id: updated.id }
+        : b
+      )
     )
   }
 
