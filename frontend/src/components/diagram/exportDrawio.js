@@ -2,6 +2,7 @@
  * Converts React Flow nodes + edges into a valid draw.io XML string.
  * The output can be opened directly in draw.io / diagrams.net for further editing.
  */
+import { stripDiacritics } from '../../utils/arabic'
 
 const NARRATOR_STYLE = (grade) => {
   const fills = {
@@ -56,7 +57,7 @@ export function toDrawioXml(nodes, edges) {
 
     if (node.type === 'narrator') {
       const n = node.data.narrator
-      const label = escapeXml(n.name_arabic) + (n.death_year ? `\\nd. ${n.death_year} AH` : '')
+      const label = escapeXml(stripDiacritics(n.name_arabic)) + (n.death_year ? `\\nd. ${n.death_year} AH` : '')
       const style = NARRATOR_STYLE(n.grade)
       cells += `<mxCell id="${cellId}" value="${label}" style="${style}" vertex="1" parent="1">
         <mxGeometry x="${x}" y="${y}" width="180" height="60" as="geometry"/>

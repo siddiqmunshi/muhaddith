@@ -1,11 +1,6 @@
 import { useState } from 'react'
 import NarratorMetaPanel from './NarratorMetaPanel'
-
-// Strip Arabic diacritics (harakat) so the parser works on both
-// voweled (حَدَّثَنَا) and unvoweled (حدثنا) text.
-function stripDiacritics(text) {
-  return text.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u0640]/g, '')
-}
+import { stripDiacritics } from '../../utils/arabic'
 
 // Parse Arabic isnad into a list of raw narrator name strings.
 // Handles full classical isnad syntax including harakat, قال :, سمعت, أنه سمع.

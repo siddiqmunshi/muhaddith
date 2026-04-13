@@ -1,4 +1,5 @@
 import { Handle, Position } from 'reactflow'
+import { stripDiacritics } from '../../utils/arabic'
 
 const GRADE_STYLES = {
   'ثقة':       'bg-green-50  border-green-400  text-green-800',
@@ -29,7 +30,7 @@ export default function NarratorNode({ data, selected }) {
           dir="rtl"
           style={{ fontFamily: "'Amiri', 'Traditional Arabic', serif" }}
         >
-          {narrator.name_arabic}
+          {stripDiacritics(narrator.name_arabic)}
         </p>
         {narrator.death_year && (
           <p className="text-xs text-center opacity-60 mt-0.5">d. {narrator.death_year} AH</p>
