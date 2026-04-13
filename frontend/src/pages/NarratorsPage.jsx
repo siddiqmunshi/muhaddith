@@ -36,7 +36,8 @@ export default function NarratorsPage() {
   async function loadAppearances(id) {
     if (appearances[id]) return // already loaded
     const res = await fetch(`/api/narrators/${id}/appearances`)
-    setAppearances(prev => ({ ...prev, [id]: await res.json() }))
+    const data = await res.json()
+    setAppearances(prev => ({ ...prev, [id]: data }))
   }
 
   function handleToggleExpand(id) {
