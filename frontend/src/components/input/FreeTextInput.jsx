@@ -1,19 +1,40 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import NarratorMetaPanel from './NarratorMetaPanel'
+import { stripDiacritics } from '../../utils/arabic'
 
-// Parse Arabic isnad — splits on عن / حدثنا / أخبرنا / أنبأنا etc.
-function parseIsnad(text) {
-  const connectors = /\s+(?:عن|حدثنا|حدثني|أخبرنا|أخبرني|أنبأنا|أنبأني|روى|رواه|قال)\s+/g
-  return text
-    .split(connectors)
-    .map(s => s.trim())
-    .filter(Boolean)
+// Parse Arabic isnad into a list of raw narrator name strings.
+// Handles full classical isnad syntax including harakat, قال :, سمعت, أنه سمع.
+function parseIsnad(raw) {
+  const text = stripDiacritics(raw)
+
+  // Step 1: remove meta-connectors (قال : / يقول :) — these introduce the
+  // next transmission verb but are not transmission verbs themselves.
+  const normalized = text
+    .replace(/،?\s*قال\s*:/g, ' ')
+    .replace(/،?\s*يقول\s*:/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // Step 2: split on transmission verbs (order matters — longer patterns first)
+  const parts = normalized.split(
+    /،?\s*(?:حدثنا|حدثني|أخبرنا|أخبرني|أنبأنا|أنبأني|سمعنا|سمعت|أنه\s+سمع|أنها\s+سمعت|عن(?![هاكمن])|روى|رواه)\s*/g
+  )
+
+  // Step 3: clean up commas, stray punctuation, and whitespace
+  return parts
+    .map(s => s.replace(/[،,:]/g, '').trim())
+    .filter(s => s.length > 1)
 }
 
 function NarratorSearch({ initialName, onSelect }) {
   const [query, setQuery] = useState(initialName || '')
   const [results, setResults] = useState([])
   const [showCreate, setShowCreate] = useState(false)
+
+  // Auto-search on mount so existing narrators appear immediately
+  useEffect(() => {
+    if (initialName?.trim()) search(initialName)
+  }, [])
 
   async function search(q) {
     setQuery(q)
