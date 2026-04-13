@@ -11,8 +11,26 @@ function dv(word) {
   return [...word].map(c => c + D).join('')
 }
 
-// Parse Arabic isnad into a list of narrator name strings, preserving any
+// The canonical stripped forms of each transmission verb, used to normalise
+// the captured verb before storing it.
+const VERB_CANONICAL = {
+  'حدثنا': 'حدثنا', 'حدثني': 'حدثني',
+  'أخبرنا': 'أخبرنا', 'أخبرني': 'أخبرني',
+  'أنبأنا': 'أنبأنا', 'أنبأني': 'أنبأني',
+  'سمعنا': 'سمعنا', 'سمعت': 'سمعت',
+  'أنه سمع': 'أنه سمع', 'أنها سمعت': 'أنها سمعت',
+  'عن': 'عن', 'روى': 'روى', 'رواه': 'رواه',
+}
+
+function canonicalVerb(raw) {
+  const stripped = stripDiacritics(raw).replace(/[،\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return VERB_CANONICAL[stripped] ?? stripped
+}
+
+// Parse Arabic isnad into a list of { raw, verb } objects, preserving any
 // diacritics (harakat) present in the original input.
+// `raw`  — the narrator name fragment (with original diacritics)
+// `verb` — the transmission verb that introduced this narrator (e.g. 'عن', 'حدثنا')
 function parseIsnad(rawInput) {
   // Step 1: remove meta-connectors (قال : / يقول :) in a diacritic-aware way
   const normalized = rawInput
@@ -21,25 +39,33 @@ function parseIsnad(rawInput) {
     .replace(/\s+/g, ' ')
     .trim()
 
-  // Step 2: split on transmission verbs, tolerating diacritics between letters.
-  // عن uses a diacritic-aware negative lookahead so عَنْهُ / عنه are not split.
-  const splitRe = new RegExp(
-    `،?\\s*(?:${[
-      dv('حدثنا'), dv('حدثني'), dv('أخبرنا'), dv('أخبرني'),
-      dv('أنبأنا'), dv('أنبأني'), dv('سمعنا'), dv('سمعت'),
-      dv('أنه') + '\\s+' + dv('سمع'),
-      dv('أنها') + '\\s+' + dv('سمعت'),
-      dv('عن') + `(?!${D}[هاكمن])`,
-      dv('روى'), dv('رواه'),
-    ].join('|')})\\s*`,
-    'g'
-  )
+  // Step 2: split on transmission verbs using a CAPTURING group so the matched
+  // verb is included in the result array (at odd indices).
+  // عن uses a diacritic-aware negative lookahead so عَنْهُ is not split.
+  const verbPattern = [
+    dv('حدثنا'), dv('حدثني'), dv('أخبرنا'), dv('أخبرني'),
+    dv('أنبأنا'), dv('أنبأني'), dv('سمعنا'), dv('سمعت'),
+    dv('أنه') + '\\s+' + dv('سمع'),
+    dv('أنها') + '\\s+' + dv('سمعت'),
+    dv('عن') + `(?!${D}[هاكمن])`,
+    dv('روى'), dv('رواه'),
+  ].join('|')
 
-  // Step 3: clean up stray punctuation and whitespace
-  return normalized
-    .split(splitRe)
-    .map(s => s.replace(/[،,:]/g, '').trim())
-    .filter(s => s.length > 1)
+  const splitRe = new RegExp(`(،?\\s*(?:${verbPattern})\\s*)`, 'g')
+  const parts = normalized.split(splitRe)
+  // parts = [frag0, verb1, frag1, verb2, frag2, ...]
+  // Even indices = narrator fragments, odd indices = verbs
+
+  // Step 3: collect {raw, verb} pairs, skipping empty leading fragment
+  const result = []
+  for (let i = 0; i < parts.length; i += 2) {
+    const raw = parts[i].replace(/[،,:]/g, '').trim()
+    const verbRaw = i > 0 ? parts[i - 1] : null
+    if (raw.length > 1) {
+      result.push({ raw, verb: verbRaw ? canonicalVerb(verbRaw) : null })
+    }
+  }
+  return result
 }
 
 function NarratorSearch({ initialName, onSelect }) {
@@ -114,8 +140,8 @@ export default function FreeTextInput({ hadithBookId, onChainSaved }) {
   const [saving, setSaving] = useState(false)
 
   function handleParse() {
-    const names = parseIsnad(text)
-    setParsed(names.map(raw => ({ raw, narrator: null })))
+    const items = parseIsnad(text)
+    setParsed(items.map(({ raw, verb }) => ({ raw, verb, narrator: null })))
     setStep('confirm')
   }
 
@@ -135,7 +161,11 @@ export default function FreeTextInput({ hadithBookId, onChainSaved }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          narrators: parsed.map((p, i) => ({ narrator_id: p.narrator.id, position: i })),
+          narrators: parsed.map((p, i) => ({
+            narrator_id: p.narrator.id,
+            position: i,
+            transmission_verb: p.verb || null,
+          })),
         }),
       })
       onChainSaved(await res.json())
