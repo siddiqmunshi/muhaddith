@@ -26,7 +26,7 @@ export function buildGraph(chains) {
     }
   }
 
-  function addEdge(source, target) {
+  function addEdge(source, target, verb) {
     const id = `e-${source}-${target}`
     if (!edges.find(e => e.id === id)) {
       edges.push({
@@ -34,6 +34,13 @@ export function buildGraph(chains) {
         source,
         target,
         type: 'smoothstep',
+        label: verb || undefined,
+        labelStyle: {
+          fontFamily: "'Amiri', serif",
+          fontSize: 11,
+          fill: '#6b7280',
+        },
+        labelBgStyle: { fill: '#f9fafb', fillOpacity: 0.85 },
         style: { stroke: '#9ca3af', strokeWidth: 1.5 },
         markerEnd: { type: 'ArrowClosed', color: '#9ca3af' },
       })
@@ -48,13 +55,14 @@ export function buildGraph(chains) {
     // collector, last position = Prophet/earliest source.
     // Edges run from later (earlier in the chain array) to earlier (later),
     // so the Prophet appears at the top and the collector's teacher at the bottom.
+    // The transmission_verb on narrator[i] labels the edge chain[i] → chain[i-1].
     for (let i = 0; i < chain.length; i++) {
       const n = chain[i]
       const nId = `narrator-${n.id}`
       addNode(nId, { narrator: n }, 'narrator')
       if (i > 0) {
-        // chain[i] transmitted TO chain[i-1], so edge goes chain[i] → chain[i-1]
-        addEdge(nId, `narrator-${chain[i - 1].id}`)
+        // chain[i] transmitted TO chain[i-1]; verb is on chain[i-1] (the one that cited chain[i])
+        addEdge(nId, `narrator-${chain[i - 1].id}`, chain[i - 1].transmission_verb || null)
       }
     }
 
