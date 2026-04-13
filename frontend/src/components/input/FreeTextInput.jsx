@@ -1,0 +1,197 @@
+import { useState } from 'react'
+import NarratorMetaPanel from './NarratorMetaPanel'
+
+// Parse Arabic isnad — splits on عن / حدثنا / أخبرنا / أنبأنا etc.
+function parseIsnad(text) {
+  const connectors = /\s+(?:عن|حدثنا|حدثني|أخبرنا|أخبرني|أنبأنا|أنبأني|روى|رواه|قال)\s+/g
+  return text
+    .split(connectors)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+function NarratorSearch({ initialName, onSelect }) {
+  const [query, setQuery] = useState(initialName || '')
+  const [results, setResults] = useState([])
+  const [showCreate, setShowCreate] = useState(false)
+
+  async function search(q) {
+    setQuery(q)
+    if (!q.trim()) return setResults([])
+    const res = await fetch(`/api/narrators?search=${encodeURIComponent(q)}`)
+    setResults(await res.json())
+  }
+
+  if (showCreate) {
+    return (
+      <NarratorMetaPanel
+        narrator={{ name_arabic: query }}
+        onSave={onSelect}
+        onClose={() => setShowCreate(false)}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <input
+        dir="rtl"
+        value={query}
+        onChange={e => search(e.target.value)}
+        placeholder="Search narrators..."
+        className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+        style={{ fontFamily: "'Amiri', serif" }}
+      />
+      {results.length > 0 && (
+        <ul className="border border-gray-200 rounded divide-y divide-gray-100 max-h-40 overflow-y-auto">
+          {results.map(n => (
+            <li
+              key={n.id}
+              onClick={() => onSelect(n)}
+              className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between"
+            >
+              <span dir="rtl" style={{ fontFamily: "'Amiri', serif" }}>{n.name_arabic}</span>
+              {n.grade && <span className="text-xs text-gray-400">{n.grade}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        onClick={() => setShowCreate(true)}
+        className="text-xs text-gray-500 hover:text-gray-800 underline"
+      >
+        + Create new narrator
+      </button>
+    </div>
+  )
+}
+
+export default function FreeTextInput({ hadithBookId, onChainSaved }) {
+  const [text, setText] = useState('')
+  const [parsed, setParsed] = useState([])
+  const [step, setStep] = useState('input') // input | confirm | done
+  const [editingIdx, setEditingIdx] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  function handleParse() {
+    const names = parseIsnad(text)
+    setParsed(names.map(raw => ({ raw, narrator: null })))
+    setStep('confirm')
+  }
+
+  function handleNarratorSaved(idx, narrator) {
+    setParsed(prev => prev.map((p, i) => i === idx ? { ...p, narrator } : p))
+    setEditingIdx(null)
+  }
+
+  async function handleSaveChain() {
+    if (parsed.some(p => !p.narrator)) {
+      alert('Please resolve all narrators before saving.')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/hadith-books/${hadithBookId}/chain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          narrators: parsed.map((p, i) => ({ narrator_id: p.narrator.id, position: i })),
+        }),
+      })
+      onChainSaved(await res.json())
+      setStep('done')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (step === 'done') {
+    return (
+      <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">
+        Chain saved.
+        <button onClick={() => { setStep('input'); setText(''); setParsed([]) }} className="text-xs underline">
+          Edit
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {step === 'input' && (
+        <>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            dir="rtl"
+            rows={4}
+            placeholder="الصق الإسناد هنا... مثال: حدثنا أ عن ب عن ج عن النبي ﷺ"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-y"
+            style={{ fontFamily: "'Amiri', 'Traditional Arabic', serif", fontSize: '15px' }}
+          />
+          <button
+            onClick={handleParse}
+            disabled={!text.trim()}
+            className="text-sm bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors"
+          >
+            Parse narrators
+          </button>
+        </>
+      )}
+
+      {step === 'confirm' && (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">
+            {parsed.length} narrator{parsed.length !== 1 ? 's' : ''} detected. Confirm or edit each one:
+          </p>
+          <ol className="space-y-2">
+            {parsed.map((item, idx) => (
+              <li key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-white">
+                  <span className="text-sm" dir="rtl" style={{ fontFamily: "'Amiri', serif" }}>
+                    {item.raw}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {item.narrator
+                      ? <span className="text-xs text-green-600 font-medium">{item.narrator.name_transliteration || item.narrator.name_arabic}</span>
+                      : <span className="text-xs text-orange-500">Unresolved</span>
+                    }
+                    <button
+                      onClick={() => setEditingIdx(editingIdx === idx ? null : idx)}
+                      className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 px-2 py-0.5 rounded"
+                    >
+                      {item.narrator ? 'Edit' : 'Set'}
+                    </button>
+                  </div>
+                </div>
+                {editingIdx === idx && (
+                  <div className="border-t border-gray-100 p-3">
+                    <NarratorSearch
+                      initialName={item.raw}
+                      onSelect={n => handleNarratorSaved(idx, n)}
+                    />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setStep('input')}
+              className="text-sm text-gray-500 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleSaveChain}
+              disabled={saving || parsed.some(p => !p.narrator)}
+              className="text-sm bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save chain'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

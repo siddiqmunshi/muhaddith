@@ -9,6 +9,7 @@ const booksRouter = require('./routes/books');
 const hadithBooksRouter = require('./routes/hadithBooks');
 const narratorsRouter = require('./routes/narrators');
 const chainsRouter = require('./routes/chains');
+const sunnahRouter = require('./routes/sunnah');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +32,7 @@ app.use('/api/books', booksRouter);
 app.use('/api', hadithBooksRouter);
 app.use('/api/narrators', narratorsRouter);
 app.use('/api', chainsRouter);
+app.use('/api/sunnah', sunnahRouter);
 
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
