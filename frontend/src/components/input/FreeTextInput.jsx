@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import NarratorMetaPanel from './NarratorMetaPanel'
 import { stripDiacritics } from '../../utils/arabic'
 
@@ -30,6 +30,11 @@ function NarratorSearch({ initialName, onSelect }) {
   const [query, setQuery] = useState(initialName || '')
   const [results, setResults] = useState([])
   const [showCreate, setShowCreate] = useState(false)
+
+  // Auto-search on mount so existing narrators appear immediately
+  useEffect(() => {
+    if (initialName?.trim()) search(initialName)
+  }, [])
 
   async function search(q) {
     setQuery(q)
