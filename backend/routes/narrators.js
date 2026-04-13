@@ -4,17 +4,20 @@ const pool = require('../db/client');
 
 const VALID_GRADES = ['ثقة', 'حسن', 'صدوق', 'ضعيف', 'مجهول', 'متروك', 'كذاب', 'مختلف فيه'];
 
-// GET /api/narrators?search=
+// GET /api/narrators?search=&limit=
+// search: ILIKE filter on name_arabic / name_transliteration
+// limit: defaults to 50 for search, 1000 when listing all
 router.get('/', async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, limit } = req.query;
+    const cap = parseInt(limit) || (search?.trim() ? 50 : 1000);
     let query = 'SELECT * FROM narrators';
     const params = [];
     if (search?.trim()) {
       query += ' WHERE name_arabic ILIKE $1 OR name_transliteration ILIKE $1';
       params.push(`%${search.trim()}%`);
     }
-    query += ' ORDER BY name_arabic ASC LIMIT 50';
+    query += ` ORDER BY name_arabic ASC LIMIT ${cap}`;
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -28,6 +31,34 @@ router.get('/:id', async (req, res) => {
     const result = await pool.query('SELECT * FROM narrators WHERE id = $1', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Narrator not found' });
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/narrators/:id/appearances
+// Returns the hadiths and books this narrator appears in across all projects
+router.get('/:id/appearances', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         h.id        AS hadith_id,
+         h.name      AS hadith_name,
+         p.id        AS project_id,
+         p.name      AS project_name,
+         b.name_arabic AS book_name_arabic,
+         b.name_english AS book_name_english,
+         c.position
+       FROM chains c
+       JOIN hadith_books hb ON hb.id = c.hadith_book_id
+       JOIN hadiths h ON h.id = hb.hadith_id
+       JOIN projects p ON p.id = h.project_id
+       JOIN books b ON b.id = hb.book_id
+       WHERE c.narrator_id = $1
+       ORDER BY p.name, h.name, b.display_order`,
+      [req.params.id]
+    );
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -90,6 +121,17 @@ router.patch('/:id', async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Narrator not found' });
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/narrators/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM narrators WHERE id = $1 RETURNING id', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Narrator not found' });
+    res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

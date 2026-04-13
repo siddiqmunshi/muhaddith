@@ -19,8 +19,23 @@ export default function BookChecklist({ books, onStatusChange }) {
     books: books.filter(b => b.tier === tier),
   }))
 
+  const counts = {
+    found:         books.filter(b => b.status === 'found').length,
+    not_found:     books.filter(b => b.status === 'not_found').length,
+    not_available: books.filter(b => b.status === 'not_available').length,
+    unchecked:     books.filter(b => !b.status || b.status === 'unchecked').length,
+  }
+
   return (
     <div className="space-y-6">
+      {/* Progress summary */}
+      <div className="flex items-center gap-4 text-xs flex-wrap">
+        <span className="text-green-700 bg-green-50 px-2.5 py-1 rounded-full font-medium">{counts.found} found</span>
+        <span className="text-red-600 bg-red-50 px-2.5 py-1 rounded-full font-medium">{counts.not_found} not found</span>
+        <span className="text-yellow-700 bg-yellow-50 px-2.5 py-1 rounded-full font-medium">{counts.not_available} not available</span>
+        <span className="text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full font-medium">{counts.unchecked} unchecked</span>
+      </div>
+
       {byTier.map(({ tier, label, books: tierBooks }) => (
         <div key={tier}>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
