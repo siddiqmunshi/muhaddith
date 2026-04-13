@@ -62,15 +62,17 @@ export function buildGraph(chains) {
     const bookId = `book-${book.id}`
     addNode(bookId, { book }, 'book')
 
-    // First narrator (position 0) received the chain and recorded it in the book
+    // First narrator (position 0) received the chain and recorded it in the book.
+    // If a matn exists: narrator → matn → book
+    // If no matn:       narrator → book
     const firstNarrator = chain[0]
-    addEdge(`narrator-${firstNarrator.id}`, bookId)
-
-    // Matn node (only if matn exists)
     if (book.matn_arabic) {
       const matnId = `matn-${book.id}`
       addNode(matnId, { matn: book.matn_arabic, bookName: book.name_arabic }, 'matn')
-      addEdge(bookId, matnId)
+      addEdge(`narrator-${firstNarrator.id}`, matnId)
+      addEdge(matnId, bookId)
+    } else {
+      addEdge(`narrator-${firstNarrator.id}`, bookId)
     }
   }
 
