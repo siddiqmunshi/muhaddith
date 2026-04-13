@@ -43,13 +43,18 @@ export function buildGraph(chains) {
   for (const { book, chain } of chains) {
     if (!chain || chain.length === 0) continue
 
-    // Narrator nodes + narrator→narrator edges
+    // Narrator nodes + narrator→narrator edges.
+    // Chain is stored in text order: position 0 = narrator closest to the
+    // collector, last position = Prophet/earliest source.
+    // Edges run from later (earlier in the chain array) to earlier (later),
+    // so the Prophet appears at the top and the collector's teacher at the bottom.
     for (let i = 0; i < chain.length; i++) {
       const n = chain[i]
       const nId = `narrator-${n.id}`
       addNode(nId, { narrator: n }, 'narrator')
       if (i > 0) {
-        addEdge(`narrator-${chain[i - 1].id}`, nId)
+        // chain[i] transmitted TO chain[i-1], so edge goes chain[i] → chain[i-1]
+        addEdge(nId, `narrator-${chain[i - 1].id}`)
       }
     }
 
@@ -57,9 +62,9 @@ export function buildGraph(chains) {
     const bookId = `book-${book.id}`
     addNode(bookId, { book }, 'book')
 
-    // Last narrator → book
-    const lastNarrator = chain[chain.length - 1]
-    addEdge(`narrator-${lastNarrator.id}`, bookId)
+    // First narrator (position 0) received the chain and recorded it in the book
+    const firstNarrator = chain[0]
+    addEdge(`narrator-${firstNarrator.id}`, bookId)
 
     // Matn node (only if matn exists)
     if (book.matn_arabic) {
