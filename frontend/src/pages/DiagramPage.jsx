@@ -133,6 +133,7 @@ export default function DiagramPage() {
   const [diagramNodes, setDiagramNodes] = useState([])
   const [diagramEdges, setDiagramEdges] = useState([])
   const [exporting, setExporting] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     fetch(`/api/hadiths/${hadithId}`).then(r => r.json()).then(setHadith)
@@ -174,7 +175,16 @@ export default function DiagramPage() {
     <div className="fixed inset-0 top-[105px] flex flex-col bg-gray-50">
       {/* Toolbar */}
       <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex items-center justify-between shrink-0">
-        <p className="text-sm font-medium text-gray-800">{hadith?.name}</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            title={sidebarOpen ? 'Hide checklist' : 'Show checklist'}
+          >
+            {sidebarOpen ? '← Hide checklist' : '→ Show checklist'}
+          </button>
+          <p className="text-sm font-medium text-gray-800">{hadith?.name}</p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={exportPng}
@@ -201,7 +211,7 @@ export default function DiagramPage() {
 
       {/* Main: sidebar + canvas */}
       <div className="flex flex-1 overflow-hidden">
-        <BookStatusTable books={books} />
+        {sidebarOpen && <BookStatusTable books={books} />}
         <ReactFlowProvider>
           <DiagramCanvas
             hadithId={hadithId}
