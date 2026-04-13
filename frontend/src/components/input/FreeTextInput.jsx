@@ -2,26 +2,42 @@ import { useState, useEffect } from 'react'
 import NarratorMetaPanel from './NarratorMetaPanel'
 import { stripDiacritics } from '../../utils/arabic'
 
-// Parse Arabic isnad into a list of raw narrator name strings.
-// Handles full classical isnad syntax including harakat, قال :, سمعت, أنه سمع.
-function parseIsnad(raw) {
-  const text = stripDiacritics(raw)
+// Optional-diacritic pattern: matches zero or more harakat characters
+const D = '[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u0640]*'
 
-  // Step 1: remove meta-connectors (قال : / يقول :) — these introduce the
-  // next transmission verb but are not transmission verbs themselves.
-  const normalized = text
-    .replace(/،?\s*قال\s*:/g, ' ')
-    .replace(/،?\s*يقول\s*:/g, ' ')
+// Make each character in an Arabic word optionally followed by diacritics,
+// so the pattern matches both voweled (حَدَّثَنَا) and unvoweled (حدثنا) forms.
+function dv(word) {
+  return [...word].map(c => c + D).join('')
+}
+
+// Parse Arabic isnad into a list of narrator name strings, preserving any
+// diacritics (harakat) present in the original input.
+function parseIsnad(rawInput) {
+  // Step 1: remove meta-connectors (قال : / يقول :) in a diacritic-aware way
+  const normalized = rawInput
+    .replace(new RegExp(`،?\\s*${dv('قال')}\\s*:`, 'g'), ' ')
+    .replace(new RegExp(`،?\\s*${dv('يقول')}\\s*:`, 'g'), ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
-  // Step 2: split on transmission verbs (order matters — longer patterns first)
-  const parts = normalized.split(
-    /،?\s*(?:حدثنا|حدثني|أخبرنا|أخبرني|أنبأنا|أنبأني|سمعنا|سمعت|أنه\s+سمع|أنها\s+سمعت|عن(?![هاكمن])|روى|رواه)\s*/g
+  // Step 2: split on transmission verbs, tolerating diacritics between letters.
+  // عن uses a diacritic-aware negative lookahead so عَنْهُ / عنه are not split.
+  const splitRe = new RegExp(
+    `،?\\s*(?:${[
+      dv('حدثنا'), dv('حدثني'), dv('أخبرنا'), dv('أخبرني'),
+      dv('أنبأنا'), dv('أنبأني'), dv('سمعنا'), dv('سمعت'),
+      dv('أنه') + '\\s+' + dv('سمع'),
+      dv('أنها') + '\\s+' + dv('سمعت'),
+      dv('عن') + `(?!${D}[هاكمن])`,
+      dv('روى'), dv('رواه'),
+    ].join('|')})\\s*`,
+    'g'
   )
 
-  // Step 3: clean up commas, stray punctuation, and whitespace
-  return parts
+  // Step 3: clean up stray punctuation and whitespace
+  return normalized
+    .split(splitRe)
     .map(s => s.replace(/[،,:]/g, '').trim())
     .filter(s => s.length > 1)
 }
@@ -31,7 +47,8 @@ function NarratorSearch({ initialName, onSelect }) {
   const [results, setResults] = useState([])
   const [showCreate, setShowCreate] = useState(false)
 
-  // Auto-search on mount so existing narrators appear immediately
+  // Auto-search on mount so existing narrators appear immediately.
+  // Strip diacritics for the API call so voweled queries match unvoweled DB entries.
   useEffect(() => {
     if (initialName?.trim()) search(initialName)
   }, [])
@@ -39,7 +56,9 @@ function NarratorSearch({ initialName, onSelect }) {
   async function search(q) {
     setQuery(q)
     if (!q.trim()) return setResults([])
-    const res = await fetch(`/api/narrators?search=${encodeURIComponent(q)}`)
+    const apiQ = stripDiacritics(q)
+    if (!apiQ.trim()) return setResults([])
+    const res = await fetch(`/api/narrators?search=${encodeURIComponent(apiQ)}`)
     setResults(await res.json())
   }
 

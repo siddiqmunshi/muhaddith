@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactFlow, {
   Background,
@@ -19,6 +19,8 @@ import BookNode from '../components/diagram/BookNode'
 import MatnNode from '../components/diagram/MatnNode'
 import NarratorPanel from '../components/diagram/NarratorPanel'
 import BookStatusTable from '../components/diagram/BookStatusTable'
+import GradeLegend from '../components/diagram/GradeLegend'
+import { stripDiacritics } from '../utils/arabic'
 
 const nodeTypes = { narrator: NarratorNode, book: BookNode, matn: MatnNode }
 
@@ -30,13 +32,19 @@ function slugify(str) {
     .slice(0, 50)
 }
 
-function DiagramCanvas({ hadithId, hadithName, onNodesEdgesReady }) {
+function DiagramCanvas({ hadithId, filterBookId, onNodesEdgesReady, onFoundBooksLoaded }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNarrator, setSelectedNarrator] = useState(null)
   const [loading, setLoading] = useState(true)
   const { fitView } = useReactFlow()
   const canvasRef = useRef(null)
+
+  // Store the full unfiltered graph so we can re-apply opacity without reloading
+  const rawNodes = useRef([])
+  const rawEdges = useRef([])
+  // bookId → Set of node IDs belonging to that chain
+  const bookToNodeIds = useRef(new Map())
 
   useEffect(() => { loadDiagram() }, [hadithId])
 
@@ -54,22 +62,55 @@ function DiagramCanvas({ hadithId, hadithName, onNodesEdgesReady }) {
         })
       )
 
-      const { nodes: rawNodes, edges } = buildGraph(chains)
-      const nodesWithHandler = rawNodes.map(n =>
+      // Build node-membership map: bookId → Set of nodeIds in that chain
+      const membership = new Map()
+      for (const { book, chain } of chains) {
+        const ids = new Set()
+        chain.forEach(n => ids.add(`narrator-${n.id}`))
+        ids.add(`book-${book.id}`)
+        if (book.matn_arabic) ids.add(`matn-${book.id}`)
+        membership.set(book.id, ids)
+      }
+      bookToNodeIds.current = membership
+
+      const { nodes: graphNodes, edges: graphEdges } = buildGraph(chains)
+      const nodesWithHandler = graphNodes.map(n =>
         n.type === 'narrator'
           ? { ...n, data: { ...n.data, onSelect: setSelectedNarrator } }
           : n
       )
+
+      rawNodes.current = nodesWithHandler
+      rawEdges.current = graphEdges
       setNodes(nodesWithHandler)
-      setEdges(edges)
-      onNodesEdgesReady(nodesWithHandler, edges)
+      setEdges(graphEdges)
+      onNodesEdgesReady(nodesWithHandler, graphEdges)
+      onFoundBooksLoaded(foundBooks)
       setTimeout(() => fitView({ padding: 0.2 }), 50)
     } finally {
       setLoading(false)
     }
   }
 
-  // PNG export — fit view, capture, restore
+  // Apply opacity filter whenever filterBookId changes
+  useEffect(() => {
+    if (rawNodes.current.length === 0) return
+    const highlighted = filterBookId ? bookToNodeIds.current.get(filterBookId) : null
+
+    setNodes(rawNodes.current.map(n => ({
+      ...n,
+      style: { ...n.style, opacity: highlighted && !highlighted.has(n.id) ? 0.12 : 1 },
+    })))
+    setEdges(rawEdges.current.map(e => ({
+      ...e,
+      style: {
+        ...e.style,
+        opacity: highlighted && (!highlighted.has(e.source) || !highlighted.has(e.target)) ? 0.08 : 1,
+      },
+    })))
+  }, [filterBookId])
+
+  // PNG export
   const exportPng = useCallback(async (filename) => {
     fitView({ padding: 0.3 })
     await new Promise(r => setTimeout(r, 300))
@@ -82,10 +123,7 @@ function DiagramCanvas({ hadithId, hadithName, onNodesEdgesReady }) {
     a.click()
   }, [fitView])
 
-  // Expose export fn to parent via callback
-  useEffect(() => {
-    window.__diagramExportPng = exportPng
-  }, [exportPng])
+  useEffect(() => { window.__diagramExportPng = exportPng }, [exportPng])
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
@@ -120,7 +158,12 @@ function DiagramCanvas({ hadithId, hadithName, onNodesEdgesReady }) {
           maskColor="rgba(0,0,0,0.05)"
         />
       </ReactFlow>
-      <NarratorPanel narrator={selectedNarrator} onClose={() => setSelectedNarrator(null)} />
+      <NarratorPanel
+        narrator={selectedNarrator}
+        onClose={() => setSelectedNarrator(null)}
+        onUpdated={(updated) => setSelectedNarrator(updated)}
+      />
+      <GradeLegend />
     </div>
   )
 }
@@ -130,10 +173,12 @@ export default function DiagramPage() {
   const navigate = useNavigate()
   const [hadith, setHadith] = useState(null)
   const [books, setBooks] = useState([])
+  const [foundBooks, setFoundBooks] = useState([])
   const [diagramNodes, setDiagramNodes] = useState([])
   const [diagramEdges, setDiagramEdges] = useState([])
   const [exporting, setExporting] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [filterBookId, setFilterBookId] = useState(null)
 
   useEffect(() => {
     fetch(`/api/hadiths/${hadithId}`).then(r => r.json()).then(setHadith)
@@ -185,7 +230,36 @@ export default function DiagramPage() {
           </button>
           <p className="text-sm font-medium text-gray-800">{hadith?.name}</p>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Chain filter — only shown when there are multiple found books */}
+          {foundBooks.length > 1 && (
+            <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1">
+              <button
+                onClick={() => setFilterBookId(null)}
+                className={`text-xs px-2.5 py-1 rounded-md transition-all ${
+                  !filterBookId ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                All
+              </button>
+              {foundBooks.map(b => (
+                <button
+                  key={b.id}
+                  onClick={() => setFilterBookId(filterBookId === b.id ? null : b.id)}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-all max-w-[120px] truncate ${
+                    filterBookId === b.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  dir="rtl"
+                  style={{ fontFamily: "'Amiri', serif" }}
+                  title={b.name_arabic}
+                >
+                  {stripDiacritics(b.name_arabic)}
+                </button>
+              ))}
+            </div>
+          )}
+
           <button
             onClick={exportPng}
             disabled={!!exporting || diagramNodes.length === 0}
@@ -215,8 +289,9 @@ export default function DiagramPage() {
         <ReactFlowProvider>
           <DiagramCanvas
             hadithId={hadithId}
-            hadithName={hadith?.name}
+            filterBookId={filterBookId}
             onNodesEdgesReady={handleNodesEdgesReady}
+            onFoundBooksLoaded={setFoundBooks}
           />
         </ReactFlowProvider>
       </div>

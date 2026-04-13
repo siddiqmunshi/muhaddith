@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import FreeTextInput from './FreeTextInput'
 import StructuredInput from './StructuredInput'
 import FileImport from './FileImport'
@@ -15,12 +15,36 @@ const MODES = [
 
 export default function ChainSection({ book, hadithId, onMatnSaved }) {
   const [mode, setMode] = useState('freetext')
-  const [chain, setChain] = useState([]) // array of narrator objects
+  const [chain, setChain] = useState([])
+  const [clearing, setClearing] = useState(false)
 
   const hadithBookId = book.hadith_book_id
 
+  // Load existing chain on mount so the preview shows after a page refresh
+  useEffect(() => {
+    if (!hadithBookId) return
+    fetch(`/api/hadith-books/${hadithBookId}/chain`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setChain(data) })
+  }, [hadithBookId])
+
   function handleChainSaved(narrators) {
     setChain(narrators)
+  }
+
+  async function handleClearChain() {
+    if (!confirm('Clear the saved chain for this book?')) return
+    setClearing(true)
+    try {
+      await fetch(`/api/hadith-books/${hadithBookId}/chain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ narrators: [] }),
+      })
+      setChain([])
+    } finally {
+      setClearing(false)
+    }
   }
 
   return (
@@ -77,9 +101,18 @@ export default function ChainSection({ book, hadithId, onMatnSaved }) {
         {/* Chain display — shown when chain has narrators */}
         {chain.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              Chain preview
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Chain preview
+              </p>
+              <button
+                onClick={handleClearChain}
+                disabled={clearing}
+                className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40"
+              >
+                {clearing ? 'Clearing...' : 'Clear chain'}
+              </button>
+            </div>
             <ChainDisplay chain={chain} />
           </div>
         )}

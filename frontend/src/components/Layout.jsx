@@ -39,6 +39,9 @@ export default function Layout() {
         <Link to="/" className="text-xl font-semibold text-gray-900 tracking-tight">
           محدّث <span className="text-gray-400 font-normal text-base">Muhaddith</span>
         </Link>
+        <Link to="/narrators" className="text-sm text-gray-500 hover:text-gray-800 transition-colors ml-4">
+          Narrators
+        </Link>
       </header>
 
       <Breadcrumb />

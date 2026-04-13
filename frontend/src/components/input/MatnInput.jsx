@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function MatnInput({ hadithBookId, initialValue, onSaved }) {
   const [matn, setMatn] = useState(initialValue)
+
+  // Keep textarea in sync when parent pre-fills the value (e.g. sunnah.com import)
+  useEffect(() => { setMatn(initialValue) }, [initialValue])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
